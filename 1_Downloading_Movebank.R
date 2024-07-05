@@ -28,11 +28,10 @@ col_interest <- c("id", "name", "taxon_ids", "sensor_type_ids",
 )
 
 
-
-checking all the studies that are available for the species
-and the tracking method of interest
-6992 studies
-complete_movebank <- movebank_retrieve(entity_type = "study")
+# checking all the studies that are available for the species
+# and the tracking method of interest
+# 6992 studies
+# complete_movebank <- movebank_retrieve(entity_type = "study")
 
 movebank_filtered <- complete_movebank |>
   drop_units() |>
@@ -56,7 +55,7 @@ safe_movebank_download <- safely(~ {
 deployments <- movebank_filtered |> 
   distinct(id) |>  # Select distinct IDs
   group_split(id) |>  # Split the data by ID
-  map(~safe_movebank_download(.x$id), .progress = T) # Apply the safe function to each group
+  map(~safe_movebank_download(.x$id), .progress = T)
 
 # Warning messages:                                  
 #   1: `vroom()` finds reading problems with the movebank specification.
@@ -72,13 +71,15 @@ deployments <- movebank_filtered |>
 # function call that produced the warning. 
 
   
-deployments |> 
+results <- deployments |> 
   map("result") |> 
-  bind_rows() |> 
+  bind_rows() 
+
+results |> 
   write_csv(here("Data", "downloadable_studies_deployments.csv"))
 
 
-deployments |> 
+error <- deployments |> 
   map(~{
     
     if(is.null(.x[['error']])) {
@@ -90,12 +91,19 @@ deployments |>
      }
   ) |>
   bind_rows() |> 
-  bind_cols(tibble(study_id = movebank_filtered$id)) |> 
+  bind_cols(tibble(study_id = movebank_filtered$id)) 
+
+error |> 
   write_csv(here("Data", "downloadable_studies_deployments_error.csv"))
 
 
-
-
+deployments_filtered <- results |> 
+  left_join(error, by = "study_id") |> 
   filter(taxon_canonical_name %in% target_sp) |> 
-  filter(str_detect(sensor_type_ids, str_c(tags_ids, collapse = "|")))
+  filter(
+    str_detect(sensor_type_ids, str_c(tags_ids_deployments, collapse = "|"))
+  ) |> 
+  filter(manipulation_type == "none" | is.na(manipulation_type))
 
+deployments_filtered |> 
+  write_csv(here("Data", "downloadable_studies_deployments_filtered.csv"))
