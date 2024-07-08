@@ -163,7 +163,7 @@ download_report <- deployments |>
   bind_rows() 
 
 download_report |> 
-  write_csv(here("Data", "Studies", "studies_dowload_report.csv"))
+  write_csv(here("Data", "Studies", "studies_download_report.csv"))
 
 # Warning messages:                                                                                                                    
 #   1: `vroom()` finds reading problems with the movebank specification.
