@@ -5,8 +5,8 @@ library(units)
 
 
 
-# Things of interest ------------------------------------------------------
 
+# 0 - Defining parameters of interest -------------------------------------
 
 # defining species of interest
 target_sp <- c("Anas platyrhynchos", "Columba livia", 
@@ -14,6 +14,7 @@ target_sp <- c("Anas platyrhynchos", "Columba livia",
                "Turdus merula", "Circus aeruginosus", "Accipiter gentilis", 
                "Passer domesticus")
 
+# defining sensors of interest
 tags_ids <- c("GPS", "Sigfox Geolocation")
 tags_ids_deployments <- c("gps", "sigfox-geolocation")
 
@@ -28,11 +29,16 @@ col_interest <- c("id", "name", "taxon_ids", "sensor_type_ids",
 )
 
 
-# checking all the studies that are available for the species
-# and the tracking method of interest
-# 6992 studies
+
+# 1 - Checking available deployments --------------------------------------
+
+# checking all the studies that are available - 6992 studies
 complete_movebank <- movebank_retrieve(entity_type = "study")
 
+# selecting only the studies that:
+# 1 - have registered deployments
+# 2 - that deploy sensors of intrest
+# 3 - with download access
 movebank_filtered <- complete_movebank |>
   drop_units() |>
   filter(
@@ -45,7 +51,7 @@ movebank_filtered |>
   write_csv(here("Data", "downloadable_studies.csv"))
 
 
-# Define a safe version of the function to handle errors
+# define a safe version of the function to handle errors
 safe_movebank_download <- safely(~ {
   movebank_download_deployment(
     .x, 'license-md5' = '51d5f89ddc94971109e50a17eb14f8be'
@@ -54,17 +60,18 @@ safe_movebank_download <- safely(~ {
 
 
 deployments <- movebank_filtered |> 
-  distinct(id) |>  # Select distinct IDs
+  distinct(id) |>  # Select distinct study IDs
   group_split(id) |> 
   map(~ {
     
     res <- safe_movebank_download(.x$id)
     
-    if (!is.null(res$result)) {
+    
+    if (!is.null(res$result)) {  # if there are some results, keep them
       
       tibble(res$result)
       
-    } else {
+    } else { # if there are no results, save the error and study id
       
       tibble(study_id = .x$id, error_text = as.character(res$error))
       
@@ -75,11 +82,14 @@ deployments <- movebank_filtered |>
   ) |> 
   bind_rows()
 
-
+# saving the list of all deployments
 deployments |> 
   write_csv(here("Data", "downloadable_studies_deployments.csv"))
 
-
+# filter deployments that include: 
+# 1 - species of interest
+# 2 - sensor type of interest
+# 3 - no manipulation with the tracked animal
 deployments_filtered <- deployments |> 
   filter(taxon_canonical_name %in% target_sp) |> 
   filter(
@@ -93,11 +103,11 @@ deployments_filtered |>
 
 
 
-# 02 - Downloading deployments of interest --------------------------------
+# 2 - Downloading deployments of interest --------------------------------
 
 
-deployments <- here("Data", "downloadable_studies_deployments_filtered.csv") |> 
-  read_csv(show_col_type = F)
+# deployments <- here("Data", "downloadable_studies_deployments_filtered.csv") |> 
+#   read_csv(show_col_type = F)
 
 col_deploy <- c("taxon_canonical_name", "study_id", "deployment_id" , 
                   "sensor_type_ids", 
@@ -108,10 +118,12 @@ col_deploy <- c("taxon_canonical_name", "study_id", "deployment_id" ,
 
 
 # Define a custom function to handle multiple arguments
+# and wrap the custom function with safely
 study_download <- function(
     study_id, sensor_type_id, individual_local_identifier
     ) {
 
+  # it reported errors with the rest of the parameters, so I gave up
   movebank_download_study(
     study_id, 
     sensor_type_id = sensor_type_id,
@@ -124,12 +136,12 @@ study_download <- function(
   
 }
 
-# Wrap the custom function with safely
 safe_study_download <- safely(study_download)
   
+# download studies 
 studies <- unique(deployments$study_id)
   
-download_report <- deployments |> 
+download_report <- deployments_filtered |> 
   select(all_of(col_deploy)) |> 
   group_split(study_id) |> 
   map(~{
@@ -140,6 +152,8 @@ download_report <- deployments |>
     
     print(paste(study_id, which(study_id == studies), "|", length(studies)))
     
+    # download studies and deployments of interest
+    # 653, 2299894820 - gps, sixfox
     res <- safe_study_download(study_id, c(653, 2299894820), individuals)
       
       if(!is.null(res$result)){ 
@@ -153,7 +167,9 @@ download_report <- deployments |>
               
       } else {
         
-        tibble(study_id = study_id, error_text = paste(res$error, collapse = " "))
+        tibble(
+          study_id = study_id, error_text = paste(res$error, collapse = " ")
+        )
         
       }
     
@@ -167,10 +183,14 @@ download_report |>
 
 # Warning messages:                                                                                                                    
 #   1: `vroom()` finds reading problems with the movebank specification.
-# ℹ This might relate to the returned data not fitting the expectation of the movebank data format specified in the package.
-# ℹ For retrieving the specific problem you can enable `global_entrace` using rlang::global_entrace() then run the command and use
+# ℹ This might relate to the returned data not fitting the expectation of 
+# the movebank data format specified in the package.
+# ℹ For retrieving the specific problem you can enable `global_entrace` 
+# using rlang::global_entrace() then run the command and use
 # `rlang::last_warnings()[[1]]$problems` to retrieve the problems.
-# ℹ The requested url can then be retrieved with: `rlang::last_warnings()[[1]]$url`
-# ℹ Alternatively in some cases you might be able to retrieve the problems calling `vroom::problems()` on the result of the
+# ℹ The requested url can then be retrieved with: 
+# `rlang::last_warnings()[[1]]$url`
+# ℹ Alternatively in some cases you might be able to retrieve the problems 
+# calling `vroom::problems()` on the result of the
 # function call that produced the warning. 
           
